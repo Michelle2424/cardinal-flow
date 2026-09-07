@@ -18,9 +18,9 @@ const formatLongDate = (date = new Date()) => new Intl.DateTimeFormat('en-US', {
 const formatShortDate = (value: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${value}T12:00:00`));
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-type Task = { id: string; title: string; dueDate: string; category: string; priority: 'low' | 'medium' | 'high'; completed: boolean; estimatedMinutes: number };
-type EventItem = { id: string; title: string; date: string; startTime: string; endTime: string; category: string };
-type CalendarItem = { id: string; title: string; category: string; isTask: boolean; startTime: string; endTime: string };
+type Task = { id: string; title: string; description?: string; dueDate: string; category: string; priority: 'low' | 'medium' | 'high'; completed: boolean; estimatedMinutes: number };
+type EventItem = { id: string; title: string; description?: string; date: string; startTime: string; endTime: string; category: string };
+type CalendarItem = { id: string; title: string; description?: string; category: string; isTask: boolean; startTime: string; endTime: string };
 type Habit = { id: string; name: string; color: string; targetPerWeek: number; completions: Record<string, boolean> };
 type Settings = { focus: string; name: string };
 
@@ -166,11 +166,12 @@ function TodayPage({ tasks, events, habits, settings, setTasks, setHabits, setSe
 }
 
 function EventModal({ event, initialDate, onSave, onClose }: { event?: EventItem; initialDate?: string; onSave: (event: EventItem) => void; onClose: () => void }) {
-  const [form, setForm] = useState<EventItem>(event || { id: uid(), title: '', date: initialDate || today(), startTime: '09:00', endTime: '10:00', category: 'Campus' });
+  const [form, setForm] = useState<EventItem>(event || { id: uid(), title: '', description: '', date: initialDate || today(), startTime: '09:00', endTime: '10:00', category: 'Campus' });
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}><div className="modal" role="dialog" aria-modal="true">
     <div className="modal-header"><div><h2>{event ? 'Edit event' : 'Make a little room'}</h2><p>Add a fixed point to your week.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-event"><X size={16} /></button></div>
     <div className="form-grid">
       <div className="field full"><label htmlFor="event-title">Title</label><input id="event-title" autoFocus value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} data-testid="input-event-title" placeholder="e.g. Walk around the Oval" /></div>
+      <div className="field full"><label htmlFor="event-description">Description</label><textarea id="event-description" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} data-testid="input-event-description" placeholder="Add a little context, location, or preparation note." rows={3} /></div>
       <div className="field"><label htmlFor="event-date">Date</label><input id="event-date" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} data-testid="input-event-date" /></div>
       <div className="field"><label htmlFor="event-category">Category</label><select id="event-category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} data-testid="select-event-category"><option>Campus</option><option>Academics</option><option>Personal</option><option>Work</option></select></div>
       <div className="field"><label htmlFor="event-start">Starts</label><input id="event-start" type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} data-testid="input-event-start" /></div>
@@ -180,7 +181,7 @@ function EventModal({ event, initialDate, onSave, onClose }: { event?: EventItem
   </div></div>;
 }
 
-function DayDetailModal({ date, items, onAddEvent, onClose }: { date: string; items: CalendarItem[]; onAddEvent: () => void; onClose: () => void }) {
+function DayDetailModal({ date, items, onAddEvent, onEditEvent, onEditTask, onClose }: { date: string; items: CalendarItem[]; onAddEvent: () => void; onEditEvent: (id: string) => void; onEditTask: (id: string) => void; onClose: () => void }) {
   const hours = Array.from({ length: 16 }, (_, index) => index + 7);
   const timedItems = items.filter(item => !item.isTask);
   const tasks = items.filter(item => item.isTask);
@@ -189,18 +190,19 @@ function DayDetailModal({ date, items, onAddEvent, onClose }: { date: string; it
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}>
     <div className="modal day-detail-modal" role="dialog" aria-modal="true" aria-labelledby="day-detail-title">
       <div className="modal-header"><div><div className="eyebrow">Day view</div><h2 id="day-detail-title">{formatLongDate(new Date(`${date}T12:00:00`))}</h2><p>A closer look at the shape of this day.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-day-detail"><X size={16} /></button></div>
-      <div className="day-detail-actions"><span className="day-detail-note">Double-click another day to open its timeline.</span><button className="button-secondary" onClick={onAddEvent} data-testid="button-add-event-day-detail"><Plus size={14} /> Add event</button></div>
-      {tasks.length > 0 && <div className="all-day-section"><div className="timeline-label">Tasks due</div><div className="all-day-items">{tasks.map(item => <div className="all-day-item" key={item.id} data-testid={`detail-task-${item.id}`}><span className="task-event-marker" />{item.title}<span className="all-day-category">{item.category}</span></div>)}</div></div>}
-      <div className="hourly-timeline">{hours.map(hour => <div className="hour-row" key={hour}><span className="hour-label">{hourLabel(hour)}</span><div className="hour-slot">{eventsForHour(hour).map(item => <div className="hour-event" key={item.id} data-testid={`detail-event-${item.id}`}><strong>{item.title}</strong><span>{item.startTime} — {item.endTime} · {item.category}</span></div>)}</div></div>)}</div>
+      <div className="day-detail-actions"><button className="button-secondary" onClick={onAddEvent} data-testid="button-add-event-day-detail"><Plus size={14} /> Add event</button></div>
+      {tasks.length > 0 && <div className="all-day-section"><div className="timeline-label">Tasks due</div><div className="all-day-items">{tasks.map(item => <button type="button" className="all-day-item detail-item-button" key={item.id} onClick={() => onEditTask(item.id)} data-testid={`detail-task-${item.id}`}><span className="task-event-marker" />{item.title}<span className="all-day-category">{item.category}</span></button>)}</div></div>}
+      <div className="hourly-timeline">{hours.map(hour => <div className="hour-row" key={hour}><span className="hour-label">{hourLabel(hour)}</span><div className="hour-slot">{eventsForHour(hour).map(item => <button type="button" className="hour-event detail-item-button" onClick={() => onEditEvent(item.id)} key={item.id} data-testid={`detail-event-${item.id}`}><strong>{item.title}</strong><span>{item.startTime} — {item.endTime} · {item.category}</span></button>)}</div></div>)}</div>
       {timedItems.length === 0 && tasks.length === 0 && <div className="selected-day-empty day-detail-empty"><p>No plans yet.</p><span>Use this day as breathing room, or add one small fixed point.</span></div>}
     </div>
   </div>;
 }
 
-function CalendarPage({ tasks, events, setEvents, notify }: { tasks: Task[]; events: EventItem[]; setEvents: (v: EventItem[]) => void; notify: (v: string) => void }) {
+function CalendarPage({ tasks, events, setTasks, setEvents, notify }: { tasks: Task[]; events: EventItem[]; setTasks: (v: Task[]) => void; setEvents: (v: EventItem[]) => void; notify: (v: string) => void }) {
   const [cursor, setCursor] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('month');
-  const [modal, setModal] = useState(false);
+  const [modal, setModal] = useState<EventItem | 'new' | null>(null);
+  const [taskModal, setTaskModal] = useState<Task | null>(null);
   const [selectedDate, setSelectedDate] = useState(today());
   const [detailDate, setDetailDate] = useState<string | null>(null);
   const year = cursor.getFullYear(); const month = cursor.getMonth();
@@ -211,14 +213,9 @@ function CalendarPage({ tasks, events, setEvents, notify }: { tasks: Task[]; eve
     const date = iso(day);
     return [
       ...events.filter(e => e.date === date).map(e => ({ ...e, isTask: false })),
-      ...tasks.filter(t => t.dueDate === date).map(t => ({ id: t.id, title: t.title, category: t.category, isTask: true, startTime: '', endTime: '' })),
+      ...tasks.filter(t => t.dueDate === date).map(t => ({ id: t.id, title: t.title, description: t.description, category: t.category, isTask: true, startTime: '', endTime: '' })),
     ];
   };
-  const selectedDay = new Date(`${selectedDate}T12:00:00`);
-  const selectedItems = dayItems(selectedDay).sort((a, b) => {
-    if (a.isTask !== b.isTask) return a.isTask ? 1 : -1;
-    return a.startTime.localeCompare(b.startTime);
-  });
   const selectDay = (day: Date) => setSelectedDate(iso(day));
   const openDayDetail = (day: Date) => {
     selectDay(day);
@@ -230,15 +227,36 @@ function CalendarPage({ tasks, events, setEvents, notify }: { tasks: Task[]; eve
     setCursor(new Date(`${event.date}T12:00:00`));
     notify('Event added to your week.');
   };
+  const saveTask = (task: Task) => {
+    setTasks(tasks.some(t => t.id === task.id) ? tasks.map(t => t.id === task.id ? task : t) : [task, ...tasks]);
+    setSelectedDate(task.dueDate);
+    setCursor(new Date(`${task.dueDate}T12:00:00`));
+    notify('Task saved.');
+  };
+  const editEvent = (id: string) => {
+    const event = events.find(item => item.id === id);
+    if (event) {
+      setDetailDate(null);
+      setModal(event);
+    }
+  };
+  const editTask = (id: string) => {
+    const task = tasks.find(item => item.id === id);
+    if (task) {
+      setDetailDate(null);
+      setTaskModal(task);
+    }
+  };
   return <div className="content">
-    <div className="page-heading"><div className="heading-copy"><div className="eyebrow">A wider view</div><h1 className="display-title">Calendar</h1><p>See the shape of your time before it fills up. Tasks and events share the same quiet table.</p></div><button className="button-primary" onClick={() => setModal(true)} data-testid="button-add-event"><Plus size={15} /> Add event</button></div>
+    <div className="page-heading"><div className="heading-copy"><div className="eyebrow">A wider view</div><h1 className="display-title">Calendar</h1><p>See the shape of your time before it fills up. Tasks and events share the same quiet table.</p></div><button className="button-primary" onClick={() => setModal('new')} data-testid="button-add-event"><Plus size={15} /> Add event</button></div>
     <div className="card card-pad">
       <div className="calendar-toolbar"><button className="icon-button" onClick={() => move(-1)} data-testid="button-calendar-prev"><ChevronLeft size={15} /></button><button className="icon-button" onClick={() => { setCursor(new Date()); }} data-testid="button-calendar-today"><Sun size={14} /></button><button className="icon-button" onClick={() => move(1)} data-testid="button-calendar-next"><ChevronRight size={15} /></button><h2>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(cursor)}</h2><div className="calendar-view-toggle"><button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')} data-testid="button-calendar-month">Month</button><button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')} data-testid="button-calendar-week">Week</button></div></div>
       {view === 'month' ? <div className="calendar-wrap"><div className="calendar-grid" style={{ marginTop: 20 }}><>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div className="calendar-head" key={day}>{day}</div>)}{cells.map(day => { const date = iso(day); const items = dayItems(day); return <button type="button" className={`calendar-cell ${day.getMonth() !== month ? 'muted-day' : ''} ${date === today() ? 'today' : ''} ${date === selectedDate ? 'selected-day' : ''}`} onClick={() => selectDay(day)} onDoubleClick={() => openDayDetail(day)} aria-label={`Select ${formatLongDate(day)}. Double-click to open day view.`} key={date} data-testid={`button-calendar-day-${date}`}><div className="day-number">{day.getDate()}</div>{items.slice(0, 3).map(item => <div className={`calendar-event ${item.isTask ? 'task-event' : ''}`} title={item.title} key={`${item.id}-${item.isTask}`}>{item.title}</div>)}{items.length > 3 && <div className="calendar-more">+{items.length - 3} more</div>}</button>; })}</></div></div> : <div className="week-grid-wrap" style={{ marginTop: 20 }}><WeekView cursor={cursor} dayItems={dayItems} selectedDate={selectedDate} onSelectDay={selectDay} onOpenDayDetail={openDayDetail} /></div>}
       <div className="calendar-interaction-hint">Single-click a day to select it. Double-click to open its hourly timeline.</div>
     </div>
-    {modal && <EventModal initialDate={selectedDate} onSave={saveEvent} onClose={() => setModal(false)} />}
-    {detailDate && <DayDetailModal date={detailDate} items={dayItems(new Date(`${detailDate}T12:00:00`))} onAddEvent={() => { setDetailDate(null); setModal(true); }} onClose={() => setDetailDate(null)} />}
+    {modal && <EventModal event={modal === 'new' ? undefined : modal} initialDate={selectedDate} onSave={saveEvent} onClose={() => setModal(null)} />}
+    {taskModal && <TaskModal task={taskModal} onSave={saveTask} onClose={() => setTaskModal(null)} />}
+    {detailDate && <DayDetailModal date={detailDate} items={dayItems(new Date(`${detailDate}T12:00:00`))} onAddEvent={() => { setDetailDate(null); setModal('new'); }} onEditEvent={editEvent} onEditTask={editTask} onClose={() => setDetailDate(null)} />}
   </div>;
 }
 
@@ -250,10 +268,10 @@ function WeekView({ cursor, dayItems, selectedDate, onSelectDay, onOpenDayDetail
 }
 
 function TaskModal({ task, onSave, onClose }: { task?: Task; onSave: (task: Task) => void; onClose: () => void }) {
-  const [form, setForm] = useState<Task>(task || { id: uid(), title: '', dueDate: today(), category: 'Academics', priority: 'medium', completed: false, estimatedMinutes: 30 });
+  const [form, setForm] = useState<Task>(task || { id: uid(), title: '', description: '', dueDate: today(), category: 'Academics', priority: 'medium', completed: false, estimatedMinutes: 30 });
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}><div className="modal" role="dialog" aria-modal="true">
     <div className="modal-header"><div><h2>{task ? 'Refine the task' : 'Add a task'}</h2><p>Keep the next step concrete and kind.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-task"><X size={16} /></button></div>
-    <div className="form-grid"><div className="field full"><label htmlFor="task-title">Task</label><input id="task-title" autoFocus value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} data-testid="input-task-title" placeholder="What would feel good to finish?" /></div><div className="field"><label htmlFor="task-date">Due date</label><input id="task-date" type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} data-testid="input-task-due-date" /></div><div className="field"><label htmlFor="task-category">Category</label><select id="task-category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} data-testid="select-task-category"><option>Academics</option><option>Life admin</option><option>Personal</option><option>Campus</option></select></div><div className="field"><label htmlFor="task-priority">Priority</label><select id="task-priority" value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value as Task['priority'] })} data-testid="select-task-priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div><div className="field"><label htmlFor="task-time">Estimate (minutes)</label><input id="task-time" type="number" min="5" step="5" value={form.estimatedMinutes} onChange={e => setForm({ ...form, estimatedMinutes: Number(e.target.value) })} data-testid="input-task-estimate" /></div></div>
+    <div className="form-grid"><div className="field full"><label htmlFor="task-title">Task</label><input id="task-title" autoFocus value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} data-testid="input-task-title" placeholder="What would feel good to finish?" /></div><div className="field full"><label htmlFor="task-description">Description</label><textarea id="task-description" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} data-testid="input-task-description" placeholder="Add the context or next step you want to remember." rows={3} /></div><div className="field"><label htmlFor="task-date">Due date</label><input id="task-date" type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} data-testid="input-task-due-date" /></div><div className="field"><label htmlFor="task-category">Category</label><select id="task-category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} data-testid="select-task-category"><option>Academics</option><option>Life admin</option><option>Personal</option><option>Campus</option></select></div><div className="field"><label htmlFor="task-priority">Priority</label><select id="task-priority" value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value as Task['priority'] })} data-testid="select-task-priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div><div className="field"><label htmlFor="task-time">Estimate (minutes)</label><input id="task-time" type="number" min="5" step="5" value={form.estimatedMinutes} onChange={e => setForm({ ...form, estimatedMinutes: Number(e.target.value) })} data-testid="input-task-estimate" /></div></div>
     <div className="modal-footer"><button className="button-secondary" onClick={onClose} data-testid="button-cancel-task">Cancel</button><button className="button-primary" disabled={!form.title.trim()} onClick={() => { onSave({ ...form, title: form.title.trim() }); onClose(); }} data-testid="button-save-task">Save task</button></div>
   </div></div>;
 }
@@ -304,7 +322,7 @@ function RoadmapPage() {
 function Router({ tasks, events, habits, settings, setTasks, setEvents, setHabits, setSettings, notify, openTask }: {
   tasks: Task[]; events: EventItem[]; habits: Habit[]; settings: Settings; setTasks: (v: Task[]) => void; setEvents: (v: EventItem[]) => void; setHabits: (v: Habit[]) => void; setSettings: (v: Settings) => void; notify: (v: string) => void; openTask: () => void;
 }) {
-  return <Switch><Route path="/"><TodayPage tasks={tasks} events={events} habits={habits} settings={settings} setTasks={setTasks} setHabits={setHabits} setSettings={setSettings} notify={notify} openTask={openTask} /></Route><Route path="/calendar"><CalendarPage tasks={tasks} events={events} setEvents={setEvents} notify={notify} /></Route><Route path="/tasks"><TasksPage tasks={tasks} setTasks={setTasks} notify={notify} /></Route><Route path="/habits"><HabitsPage habits={habits} setHabits={setHabits} notify={notify} /></Route><Route path="/roadmap"><RoadmapPage /></Route><Route component={NotFound} /></Switch>;
+  return <Switch><Route path="/"><TodayPage tasks={tasks} events={events} habits={habits} settings={settings} setTasks={setTasks} setHabits={setHabits} setSettings={setSettings} notify={notify} openTask={openTask} /></Route><Route path="/calendar"><CalendarPage tasks={tasks} events={events} setTasks={setTasks} setEvents={setEvents} notify={notify} /></Route><Route path="/tasks"><TasksPage tasks={tasks} setTasks={setTasks} notify={notify} /></Route><Route path="/habits"><HabitsPage habits={habits} setHabits={setHabits} notify={notify} /></Route><Route path="/roadmap"><RoadmapPage /></Route><Route component={NotFound} /></Switch>;
 }
 
 function App() {
