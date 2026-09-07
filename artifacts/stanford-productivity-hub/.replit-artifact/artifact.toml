@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Stanford Productivity Hub"
+description = "A calm, integrated productivity workspace for Stanford students that brings calendar events, tasks, and habits together while protecting focus and preventing burnout."
+version = "1.0.0"
+id = "artifacts/stanford-productivity-hub"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26011
+
+[services.development]
+run = "pnpm --filter @workspace/stanford-productivity-hub run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/stanford-productivity-hub", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/stanford-productivity-hub/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26011"
+BASE_PATH = "/"
