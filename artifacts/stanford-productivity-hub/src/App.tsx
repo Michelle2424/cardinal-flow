@@ -180,11 +180,11 @@ function TodayPage({ tasks, events, habits, settings, setTasks, setHabits, setSe
   </div>;
 }
 
-function CategoryColorPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function CategoryColorPicker({ value, onChange, compact = false }: { value: string; onChange: (value: string) => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [palette, setPalette] = useState<'pastel' | 'stanford'>('pastel');
   return <div className="color-picker">
-    <button type="button" className="color-select-trigger" onClick={() => setOpen(!open)} aria-expanded={open} data-testid="button-category-color"><span className="color-swatch" style={{ background: value }} />{value.toUpperCase()}<ChevronRight size={13} className={open ? 'color-picker-chevron open' : 'color-picker-chevron'} /></button>
+    <button type="button" className={`color-select-trigger ${compact ? 'compact-color-trigger' : ''}`} onClick={e => { e.stopPropagation(); setOpen(!open); }} aria-expanded={open} aria-label="Choose category color" data-testid="button-category-color"><span className="color-swatch" style={{ background: value }} />{!compact && <>{value.toUpperCase()}<ChevronRight size={13} className={open ? 'color-picker-chevron open' : 'color-picker-chevron'} /></>}</button>
     {open && <div className="color-palette-popover">
       <div className="palette-tabs"><button type="button" className={palette === 'pastel' ? 'active' : ''} onClick={() => setPalette('pastel')}>Pastels</button><button type="button" className={palette === 'stanford' ? 'active' : ''} onClick={() => setPalette('stanford')}>Stanford</button></div>
       <div className="palette-grid">{categoryPalettes[palette].map(color => <button type="button" className={`palette-swatch ${color === value ? 'selected' : ''}`} key={color} style={{ background: color }} onClick={() => { onChange(color); setOpen(false); }} aria-label={`Choose ${color}`} />)}</div>
@@ -207,21 +207,25 @@ function CategoryManager({ categories, onChange, onClose }: { categories: Catego
   };
   return <div className="category-manager">
     <div className="category-manager-header"><div><strong>Manage categories</strong><span>Use labels that make sense for your week.</span></div><button type="button" className="button-quiet" onClick={onClose}>Done</button></div>
-    <div className="category-list">{categories.map(category => editingId === category.id ? <div className="category-edit-row" key={category.id}><input value={draftName} onChange={e => setDraftName(e.target.value)} aria-label="Category name" /><CategoryColorPicker value={draftColor} onChange={setDraftColor} /><button type="button" className="button-quiet" onClick={save} disabled={!draftName.trim()}>Save</button><button type="button" className="button-quiet" onClick={reset}>Cancel</button></div> : <div className="category-row" key={category.id}><span className="category-name"><span className="color-swatch" style={{ background: category.color }} />{category.name}</span><button type="button" className="button-quiet" onClick={() => beginEdit(category)}><Pencil size={13} /> Edit</button></div>)}</div>
+    <div className="category-list">{categories.map(category => editingId === category.id ? <div className="category-edit-row" key={category.id}><input value={draftName} onChange={e => setDraftName(e.target.value)} aria-label="Category name" /><CategoryColorPicker value={draftColor} onChange={setDraftColor} /><button type="button" className="button-quiet" onClick={save} disabled={!draftName.trim()}>Save</button><button type="button" className="button-quiet" onClick={reset}>Cancel</button></div> : <div className="category-row" key={category.id}><span className="category-name"><span className="color-swatch" style={{ background: category.color }} />{category.name}</span><span className="category-row-actions"><CategoryColorPicker compact value={category.color} onChange={color => onChange(categories.map(item => item.id === category.id ? { ...item, color } : item))} /><button type="button" className="button-quiet" onClick={() => beginEdit(category)}><Pencil size={13} /> Edit</button><button type="button" className="button-quiet delete-category-button" onClick={() => { if (categories.length > 1) onChange(categories.filter(item => item.id !== category.id)); }} disabled={categories.length <= 1}>Delete</button></span></div>)}</div>
     <div className="category-new"><div className="category-manager-label">New category</div><div className="category-edit-row"><input value={editingId ? '' : draftName} onChange={e => { setEditingId(null); setDraftName(e.target.value); }} placeholder="e.g. Wellness" aria-label="New category name" /><CategoryColorPicker value={draftColor} onChange={setDraftColor} /><button type="button" className="button-accent compact-button" onClick={save} disabled={editingId !== null || !draftName.trim()}><Plus size={13} /> Add</button></div></div>
   </div>;
 }
 
-function CategoryField({ id, value, onChange, categories, onManageCategories }: { id: string; value: string; onChange: (value: string) => void; categories: Category[]; onManageCategories: () => void }) {
+function CategoryField({ id, value, onChange, categories, onChangeCategories, onManageCategories }: { id: string; value: string; onChange: (value: string) => void; categories: Category[]; onChangeCategories: (categories: Category[]) => void; onManageCategories: () => void }) {
+  const [open, setOpen] = useState(false);
   const selected = categories.find(category => category.name === value);
   return <div className="field full category-field">
     <div className="category-field-header"><label htmlFor={id}>Category</label><button type="button" className="button-quiet manage-categories-button" onClick={onManageCategories}><Pencil size={12} /> Manage categories</button></div>
-    <select id={id} value={value} onChange={e => onChange(e.target.value)} data-testid={`select-${id}`}>{categories.map(category => <option value={category.name} key={category.id}>{category.name}</option>)}</select>
+    <div className="category-picker">
+      <button type="button" id={id} className="category-picker-trigger" onClick={() => setOpen(!open)} aria-expanded={open} data-testid={`select-${id}`}><span className="category-name"><span className="color-swatch" style={{ background: selected?.color || '#6E879F' }} />{selected?.name || value}</span><ChevronRight size={14} className={open ? 'category-picker-chevron open' : 'category-picker-chevron'} /></button>
+      {open && <div className="category-picker-menu">{categories.map(category => <div className="category-option" key={category.id}><button type="button" className="category-option-main" onClick={() => { onChange(category.name); setOpen(false); }}><span className="color-swatch" style={{ background: category.color }} />{category.name}</button><CategoryColorPicker compact value={category.color} onChange={color => onChangeCategories(categories.map(item => item.id === category.id ? { ...item, color } : item))} /></div>)}<button type="button" className="category-manage-link" onClick={() => { setOpen(false); onManageCategories(); }}><Pencil size={12} /> Manage categories</button></div>}
+    </div>
     {selected && <span className="category-current"><span className="color-swatch" style={{ background: selected.color }} />{selected.name} label color</span>}
   </div>;
 }
 
-function EventForm({ event, initialDate, onSave, onClose, categories, onManageCategories }: { event?: EventItem; initialDate?: string; onSave: (event: EventItem) => void; onClose: () => void; categories: Category[]; onManageCategories: () => void }) {
+function EventForm({ event, initialDate, onSave, onClose, categories, onChangeCategories, onManageCategories }: { event?: EventItem; initialDate?: string; onSave: (event: EventItem) => void; onClose: () => void; categories: Category[]; onChangeCategories: (categories: Category[]) => void; onManageCategories: () => void }) {
   const [form, setForm] = useState<EventItem>(event || { id: uid(), title: '', description: '', date: initialDate || today(), startTime: '09:00', endTime: '10:00', category: categories[0]?.name || 'Campus' });
   return <>
     <div className="modal-header"><div><h2>{event ? 'Edit event' : 'Make a little room'}</h2><p>Add a fixed point to your week.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-event"><X size={16} /></button></div>
@@ -229,7 +233,7 @@ function EventForm({ event, initialDate, onSave, onClose, categories, onManageCa
       <div className="field full"><label htmlFor="event-title">Title</label><input id="event-title" autoFocus value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} data-testid="input-event-title" placeholder="e.g. Walk around the Oval" /></div>
       <div className="field full"><label htmlFor="event-description">Description</label><textarea id="event-description" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} data-testid="input-event-description" placeholder="Add a little context, location, or preparation note." rows={3} /></div>
       <div className="field"><label htmlFor="event-date">Date</label><input id="event-date" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} data-testid="input-event-date" /></div>
-      <CategoryField id="event-category" value={form.category} onChange={category => setForm({ ...form, category })} categories={categories} onManageCategories={onManageCategories} />
+      <CategoryField id="event-category" value={form.category} onChange={category => setForm({ ...form, category })} categories={categories} onChangeCategories={onChangeCategories} onManageCategories={onManageCategories} />
       <div className="field"><label htmlFor="event-start">Starts</label><input id="event-start" type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} data-testid="input-event-start" /></div>
       <div className="field"><label htmlFor="event-end">Ends</label><input id="event-end" type="time" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} data-testid="input-event-end" /></div>
     </div>
@@ -240,12 +244,11 @@ function EventForm({ event, initialDate, onSave, onClose, categories, onManageCa
 function EventModal({ event, initialDate, onSave, onClose, categories, onChangeCategories }: { event?: EventItem; initialDate?: string; onSave: (event: EventItem) => void; onClose: () => void; categories: Category[]; onChangeCategories: (categories: Category[]) => void }) {
   const [manageCategories, setManageCategories] = useState(false);
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}><div className="modal" role="dialog" aria-modal="true">
-    <EventForm event={event} initialDate={initialDate} onSave={onSave} onClose={onClose} categories={categories} onManageCategories={() => setManageCategories(true)} />
-    {manageCategories && <CategoryManager categories={categories} onChange={onChangeCategories} onClose={() => setManageCategories(false)} />}
+    {manageCategories ? <CategoryManager categories={categories} onChange={onChangeCategories} onClose={() => setManageCategories(false)} /> : <EventForm event={event} initialDate={initialDate} onSave={onSave} onClose={onClose} categories={categories} onChangeCategories={onChangeCategories} onManageCategories={() => setManageCategories(true)} />}
   </div></div>;
 }
 
-function DayDetailModal({ date, items, onAddEvent, onEditEvent, onEditTask, onClose }: { date: string; items: CalendarItem[]; onAddEvent: () => void; onEditEvent: (id: string) => void; onEditTask: (id: string) => void; onClose: () => void }) {
+function DayDetailModal({ date, items, onAddEvent, onAddTask, onEditEvent, onEditTask, onClose }: { date: string; items: CalendarItem[]; onAddEvent: () => void; onAddTask: () => void; onEditEvent: (id: string) => void; onEditTask: (id: string) => void; onClose: () => void }) {
   const hours = Array.from({ length: 16 }, (_, index) => index + 7);
   const timedItems = items.filter(item => !item.isTask);
   const tasks = items.filter(item => item.isTask);
@@ -254,7 +257,7 @@ function DayDetailModal({ date, items, onAddEvent, onEditEvent, onEditTask, onCl
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}>
     <div className="modal day-detail-modal" role="dialog" aria-modal="true" aria-labelledby="day-detail-title">
       <div className="modal-header"><div><div className="eyebrow">Day view</div><h2 id="day-detail-title">{formatLongDate(new Date(`${date}T12:00:00`))}</h2><p>A closer look at the shape of this day.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-day-detail"><X size={16} /></button></div>
-      <div className="day-detail-actions"><button className="button-secondary" onClick={onAddEvent} data-testid="button-add-event-day-detail"><Plus size={14} /> Add event</button></div>
+      <div className="day-detail-actions"><button className="button-secondary" onClick={onAddEvent} data-testid="button-add-event-day-detail"><Plus size={14} /> Add event</button><button className="button-accent" onClick={onAddTask} data-testid="button-add-task-day-detail"><Plus size={14} /> Add task</button></div>
       {tasks.length > 0 && <div className="all-day-section"><div className="timeline-label">Tasks due</div><div className="all-day-items">{tasks.map(item => <button type="button" className="all-day-item detail-item-button" key={item.id} onClick={() => onEditTask(item.id)} data-testid={`detail-task-${item.id}`}><span className="task-event-marker" />{item.title}<span className="all-day-category">{item.category}</span></button>)}</div></div>}
       <div className="hourly-timeline">{hours.map(hour => <div className="hour-row" key={hour}><span className="hour-label">{hourLabel(hour)}</span><div className="hour-slot">{eventsForHour(hour).map(item => <button type="button" className="hour-event detail-item-button" onClick={() => onEditEvent(item.id)} key={item.id} data-testid={`detail-event-${item.id}`}><strong>{item.title}</strong><span>{item.startTime} — {item.endTime} · {item.category}</span></button>)}</div></div>)}</div>
       {timedItems.length === 0 && tasks.length === 0 && <div className="selected-day-empty day-detail-empty"><p>No plans yet.</p><span>Use this day as breathing room, or add one small fixed point.</span></div>}
@@ -319,7 +322,7 @@ function CalendarPage({ tasks, events, setTasks, setEvents, categories, setCateg
       <div className="calendar-interaction-hint">Single-click a day to select it. Double-click to open its hourly timeline.</div>
     </div>
     {entry && <CalendarItemModal entry={entry} initialDate={selectedDate} categories={categories} onChangeCategories={setCategories} onSaveEvent={saveEvent} onSaveTask={saveTask} onClose={() => setEntry(null)} />}
-    {detailDate && <DayDetailModal date={detailDate} items={dayItems(new Date(`${detailDate}T12:00:00`))} onAddEvent={() => { setDetailDate(null); setEntry({ type: 'event' }); }} onEditEvent={editEvent} onEditTask={editTask} onClose={() => setDetailDate(null)} />}
+    {detailDate && <DayDetailModal date={detailDate} items={dayItems(new Date(`${detailDate}T12:00:00`))} onAddEvent={() => { setDetailDate(null); setEntry({ type: 'event' }); }} onAddTask={() => { setDetailDate(null); setEntry({ type: 'task' }); }} onEditEvent={editEvent} onEditTask={editTask} onClose={() => setDetailDate(null)} />}
   </div>;
 }
 
@@ -330,7 +333,7 @@ function WeekView({ cursor, dayItems, selectedDate, onSelectDay, onOpenDayDetail
   return <div className="week-grid"><div className="week-time" />{days.map(d => { const date = iso(d); return <button type="button" className={`week-time week-day-button ${date === selectedDate ? 'selected-week-day' : ''}`} onClick={() => onSelectDay(d)} onDoubleClick={() => onOpenDayDetail(d)} key={date} style={{ color: date === today() ? 'hsl(var(--accent))' : undefined }} data-testid={`button-calendar-week-day-${date}`}>{new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' }).format(d)}</button>; })}{times.map(time => <div className="contents" key={time}><div className="week-time">{time}</div>{days.map(day => <button type="button" className={`week-cell ${iso(day) === selectedDate ? 'selected-week-cell' : ''}`} onClick={() => onSelectDay(day)} onDoubleClick={() => onOpenDayDetail(day)} key={`${time}-${iso(day)}`} aria-label={`View ${formatLongDate(day)} around ${time}`} data-testid={`button-calendar-week-cell-${iso(day)}-${time}`}>{time === '08:00' && dayItems(day).slice(0, 2).map(item => <div className="week-event" style={{ borderLeftColor: categoryColor(item.category) }} key={`${item.id}-${item.isTask}`}>{item.title}</div>)}</button>)}</div>)}</div>;
 }
 
-function TaskForm({ task, initialDate, onSave, onClose, categories, onManageCategories }: { task?: Task; initialDate?: string; onSave: (task: Task) => void; onClose: () => void; categories: Category[]; onManageCategories: () => void }) {
+function TaskForm({ task, initialDate, onSave, onClose, categories, onChangeCategories, onManageCategories }: { task?: Task; initialDate?: string; onSave: (task: Task) => void; onClose: () => void; categories: Category[]; onChangeCategories: (categories: Category[]) => void; onManageCategories: () => void }) {
   const [form, setForm] = useState<Task>(task || { id: uid(), title: '', description: '', dueDate: initialDate || today(), category: categories[0]?.name || 'Academics', priority: 'medium', completed: false, estimatedMinutes: 30 });
   return <>
     <div className="modal-header"><div><h2>{task ? 'Refine the task' : 'Add a task'}</h2><p>Keep the next step concrete and kind.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-task"><X size={16} /></button></div>
@@ -338,7 +341,7 @@ function TaskForm({ task, initialDate, onSave, onClose, categories, onManageCate
       <div className="field full"><label htmlFor="task-title">Task</label><input id="task-title" autoFocus value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} data-testid="input-task-title" placeholder="What would feel good to finish?" /></div>
       <div className="field full"><label htmlFor="task-description">Description</label><textarea id="task-description" value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} data-testid="input-task-description" placeholder="Add the context or next step you want to remember." rows={3} /></div>
       <div className="field"><label htmlFor="task-date">Due date</label><input id="task-date" type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} data-testid="input-task-due-date" /></div>
-      <CategoryField id="task-category" value={form.category} onChange={category => setForm({ ...form, category })} categories={categories} onManageCategories={onManageCategories} />
+      <CategoryField id="task-category" value={form.category} onChange={category => setForm({ ...form, category })} categories={categories} onChangeCategories={onChangeCategories} onManageCategories={onManageCategories} />
       <div className="field"><label htmlFor="task-priority">Priority</label><select id="task-priority" value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value as Task['priority'] })} data-testid="select-task-priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
       <div className="field"><label htmlFor="task-time">Estimate (minutes)</label><input id="task-time" type="number" min="5" step="5" value={form.estimatedMinutes} onChange={e => setForm({ ...form, estimatedMinutes: Number(e.target.value) })} data-testid="input-task-estimate" /></div>
     </div>
@@ -349,8 +352,7 @@ function TaskForm({ task, initialDate, onSave, onClose, categories, onManageCate
 function TaskModal({ task, initialDate, onSave, onClose, categories, onChangeCategories }: { task?: Task; initialDate?: string; onSave: (task: Task) => void; onClose: () => void; categories: Category[]; onChangeCategories: (categories: Category[]) => void }) {
   const [manageCategories, setManageCategories] = useState(false);
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}><div className="modal" role="dialog" aria-modal="true">
-    <TaskForm task={task} initialDate={initialDate} onSave={onSave} onClose={onClose} categories={categories} onManageCategories={() => setManageCategories(true)} />
-    {manageCategories && <CategoryManager categories={categories} onChange={onChangeCategories} onClose={() => setManageCategories(false)} />}
+    {manageCategories ? <CategoryManager categories={categories} onChange={onChangeCategories} onClose={() => setManageCategories(false)} /> : <TaskForm task={task} initialDate={initialDate} onSave={onSave} onClose={onClose} categories={categories} onChangeCategories={onChangeCategories} onManageCategories={() => setManageCategories(true)} />}
   </div></div>;
 }
 
@@ -359,8 +361,7 @@ function CalendarItemModal({ entry, initialDate, categories, onChangeCategories,
   const [manageCategories, setManageCategories] = useState(false);
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}><div className="modal calendar-entry-modal" role="dialog" aria-modal="true">
     <div className="entry-tabs" role="tablist" aria-label="Add calendar item"><button type="button" role="tab" aria-selected={activeTab === 'event'} className={activeTab === 'event' ? 'active' : ''} onClick={() => setActiveTab('event')} data-testid="tab-add-event"><span className="entry-tab-dot event-dot" />Event</button><button type="button" role="tab" aria-selected={activeTab === 'task'} className={activeTab === 'task' ? 'active' : ''} onClick={() => setActiveTab('task')} data-testid="tab-add-task"><span className="entry-tab-dot task-dot" />Task</button></div>
-    {activeTab === 'event' ? <EventForm event={entry.type === 'event' ? entry.item : undefined} initialDate={initialDate} onSave={onSaveEvent} onClose={onClose} categories={categories} onManageCategories={() => setManageCategories(true)} /> : <TaskForm task={entry.type === 'task' ? entry.item : undefined} initialDate={initialDate} onSave={onSaveTask} onClose={onClose} categories={categories} onManageCategories={() => setManageCategories(true)} />}
-    {manageCategories && <CategoryManager categories={categories} onChange={onChangeCategories} onClose={() => setManageCategories(false)} />}
+    {manageCategories ? <CategoryManager categories={categories} onChange={onChangeCategories} onClose={() => setManageCategories(false)} /> : activeTab === 'event' ? <EventForm event={entry.type === 'event' ? entry.item : undefined} initialDate={initialDate} onSave={onSaveEvent} onClose={onClose} categories={categories} onChangeCategories={onChangeCategories} onManageCategories={() => setManageCategories(true)} /> : <TaskForm task={entry.type === 'task' ? entry.item : undefined} initialDate={initialDate} onSave={onSaveTask} onClose={onClose} categories={categories} onChangeCategories={onChangeCategories} onManageCategories={() => setManageCategories(true)} />}
   </div></div>;
 }
 
@@ -431,12 +432,18 @@ function App() {
       const next = nextCategories.find(candidate => candidate.id === category.id);
       return next && next.name !== category.name;
     });
+    const removed = categories.find(category => !nextCategories.some(candidate => candidate.id === category.id));
+    const replacement = nextCategories[0];
     if (renamed) {
       const nextName = nextCategories.find(category => category.id === renamed.id)?.name;
       if (nextName) {
         setTasks(tasks.map(task => task.category === renamed.name ? { ...task, category: nextName } : task));
         setEvents(events.map(event => event.category === renamed.name ? { ...event, category: nextName } : event));
       }
+    }
+    if (removed && replacement) {
+      setTasks(tasks.map(task => task.category === removed.name ? { ...task, category: replacement.name } : task));
+      setEvents(events.map(event => event.category === removed.name ? { ...event, category: replacement.name } : event));
     }
     setCategories(nextCategories);
   };
