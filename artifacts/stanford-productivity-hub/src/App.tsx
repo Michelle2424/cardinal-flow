@@ -180,11 +180,29 @@ function EventModal({ event, initialDate, onSave, onClose }: { event?: EventItem
   </div></div>;
 }
 
+function DayDetailModal({ date, items, onAddEvent, onClose }: { date: string; items: CalendarItem[]; onAddEvent: () => void; onClose: () => void }) {
+  const hours = Array.from({ length: 16 }, (_, index) => index + 7);
+  const timedItems = items.filter(item => !item.isTask);
+  const tasks = items.filter(item => item.isTask);
+  const hourLabel = (hour: number) => new Intl.DateTimeFormat('en-US', { hour: 'numeric' }).format(new Date(2020, 0, 1, hour));
+  const eventsForHour = (hour: number) => timedItems.filter(item => Number(item.startTime.slice(0, 2)) === hour);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={e => { if (e.currentTarget === e.target) onClose(); }}>
+    <div className="modal day-detail-modal" role="dialog" aria-modal="true" aria-labelledby="day-detail-title">
+      <div className="modal-header"><div><div className="eyebrow">Day view</div><h2 id="day-detail-title">{formatLongDate(new Date(`${date}T12:00:00`))}</h2><p>A closer look at the shape of this day.</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-day-detail"><X size={16} /></button></div>
+      <div className="day-detail-actions"><span className="day-detail-note">Double-click another day to open its timeline.</span><button className="button-secondary" onClick={onAddEvent} data-testid="button-add-event-day-detail"><Plus size={14} /> Add event</button></div>
+      {tasks.length > 0 && <div className="all-day-section"><div className="timeline-label">Tasks due</div><div className="all-day-items">{tasks.map(item => <div className="all-day-item" key={item.id} data-testid={`detail-task-${item.id}`}><span className="task-event-marker" />{item.title}<span className="all-day-category">{item.category}</span></div>)}</div></div>}
+      <div className="hourly-timeline">{hours.map(hour => <div className="hour-row" key={hour}><span className="hour-label">{hourLabel(hour)}</span><div className="hour-slot">{eventsForHour(hour).map(item => <div className="hour-event" key={item.id} data-testid={`detail-event-${item.id}`}><strong>{item.title}</strong><span>{item.startTime} — {item.endTime} · {item.category}</span></div>)}</div></div>)}</div>
+      {timedItems.length === 0 && tasks.length === 0 && <div className="selected-day-empty day-detail-empty"><p>No plans yet.</p><span>Use this day as breathing room, or add one small fixed point.</span></div>}
+    </div>
+  </div>;
+}
+
 function CalendarPage({ tasks, events, setEvents, notify }: { tasks: Task[]; events: EventItem[]; setEvents: (v: EventItem[]) => void; notify: (v: string) => void }) {
   const [cursor, setCursor] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('month');
   const [modal, setModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today());
+  const [detailDate, setDetailDate] = useState<string | null>(null);
   const year = cursor.getFullYear(); const month = cursor.getMonth();
   const first = new Date(year, month, 1); const start = new Date(year, month, 1 - first.getDay());
   const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
@@ -202,6 +220,10 @@ function CalendarPage({ tasks, events, setEvents, notify }: { tasks: Task[]; eve
     return a.startTime.localeCompare(b.startTime);
   });
   const selectDay = (day: Date) => setSelectedDate(iso(day));
+  const openDayDetail = (day: Date) => {
+    selectDay(day);
+    setDetailDate(iso(day));
+  };
   const saveEvent = (event: EventItem) => {
     setEvents(events.some(e => e.id === event.id) ? events.map(e => e.id === event.id ? event : e) : [...events, event]);
     setSelectedDate(event.date);
@@ -212,21 +234,19 @@ function CalendarPage({ tasks, events, setEvents, notify }: { tasks: Task[]; eve
     <div className="page-heading"><div className="heading-copy"><div className="eyebrow">A wider view</div><h1 className="display-title">Calendar</h1><p>See the shape of your time before it fills up. Tasks and events share the same quiet table.</p></div><button className="button-primary" onClick={() => setModal(true)} data-testid="button-add-event"><Plus size={15} /> Add event</button></div>
     <div className="card card-pad">
       <div className="calendar-toolbar"><button className="icon-button" onClick={() => move(-1)} data-testid="button-calendar-prev"><ChevronLeft size={15} /></button><button className="icon-button" onClick={() => { setCursor(new Date()); }} data-testid="button-calendar-today"><Sun size={14} /></button><button className="icon-button" onClick={() => move(1)} data-testid="button-calendar-next"><ChevronRight size={15} /></button><h2>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(cursor)}</h2><div className="calendar-view-toggle"><button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')} data-testid="button-calendar-month">Month</button><button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')} data-testid="button-calendar-week">Week</button></div></div>
-      {view === 'month' ? <div className="calendar-wrap"><div className="calendar-grid" style={{ marginTop: 20 }}><>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div className="calendar-head" key={day}>{day}</div>)}{cells.map(day => { const date = iso(day); const items = dayItems(day); return <button type="button" className={`calendar-cell ${day.getMonth() !== month ? 'muted-day' : ''} ${date === today() ? 'today' : ''} ${date === selectedDate ? 'selected-day' : ''}`} onClick={() => selectDay(day)} aria-label={`View ${formatLongDate(day)}`} key={date} data-testid={`button-calendar-day-${date}`}><div className="day-number">{day.getDate()}</div>{items.slice(0, 3).map(item => <div className={`calendar-event ${item.isTask ? 'task-event' : ''}`} title={item.title} key={`${item.id}-${item.isTask}`}>{item.title}</div>)}{items.length > 3 && <div className="calendar-more">+{items.length - 3} more</div>}</button>; })}</></div></div> : <div className="week-grid-wrap" style={{ marginTop: 20 }}><WeekView cursor={cursor} dayItems={dayItems} selectedDate={selectedDate} onSelectDay={selectDay} /></div>}
-      <section className="selected-day-panel" aria-live="polite" data-testid="selected-day-panel">
-        <div className="selected-day-header"><div><div className="eyebrow">Selected day</div><h3>{formatLongDate(selectedDay)}</h3></div><button className="button-secondary" onClick={() => setModal(true)} data-testid="button-add-event-selected-day"><Plus size={14} /> Add event for this day</button></div>
-        {selectedItems.length ? <div className="selected-day-timeline">{selectedItems.map(item => <div className={`selected-day-item ${item.isTask ? 'selected-day-task' : ''}`} key={`${item.id}-${item.isTask}`} data-testid={`row-calendar-item-${item.id}`}><span className="selected-day-time">{item.isTask ? 'Task' : `${item.startTime} — ${item.endTime}`}</span><span className="schedule-dot" /><div><strong>{item.title}</strong><span>{item.category}{item.isTask ? ' · Due today' : ''}</span></div></div>)}</div> : <div className="selected-day-empty"><p>No plans yet.</p><span>Choose a day and give it a shape that feels possible.</span></div>}
-      </section>
+      {view === 'month' ? <div className="calendar-wrap"><div className="calendar-grid" style={{ marginTop: 20 }}><>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div className="calendar-head" key={day}>{day}</div>)}{cells.map(day => { const date = iso(day); const items = dayItems(day); return <button type="button" className={`calendar-cell ${day.getMonth() !== month ? 'muted-day' : ''} ${date === today() ? 'today' : ''} ${date === selectedDate ? 'selected-day' : ''}`} onClick={() => selectDay(day)} onDoubleClick={() => openDayDetail(day)} aria-label={`Select ${formatLongDate(day)}. Double-click to open day view.`} key={date} data-testid={`button-calendar-day-${date}`}><div className="day-number">{day.getDate()}</div>{items.slice(0, 3).map(item => <div className={`calendar-event ${item.isTask ? 'task-event' : ''}`} title={item.title} key={`${item.id}-${item.isTask}`}>{item.title}</div>)}{items.length > 3 && <div className="calendar-more">+{items.length - 3} more</div>}</button>; })}</></div></div> : <div className="week-grid-wrap" style={{ marginTop: 20 }}><WeekView cursor={cursor} dayItems={dayItems} selectedDate={selectedDate} onSelectDay={selectDay} onOpenDayDetail={openDayDetail} /></div>}
+      <div className="calendar-interaction-hint">Single-click a day to select it. Double-click to open its hourly timeline.</div>
     </div>
     {modal && <EventModal initialDate={selectedDate} onSave={saveEvent} onClose={() => setModal(false)} />}
+    {detailDate && <DayDetailModal date={detailDate} items={dayItems(new Date(`${detailDate}T12:00:00`))} onAddEvent={() => { setDetailDate(null); setModal(true); }} onClose={() => setDetailDate(null)} />}
   </div>;
 }
 
-function WeekView({ cursor, dayItems, selectedDate, onSelectDay }: { cursor: Date; dayItems: (d: Date) => CalendarItem[]; selectedDate: string; onSelectDay: (day: Date) => void }) {
+function WeekView({ cursor, dayItems, selectedDate, onSelectDay, onOpenDayDetail }: { cursor: Date; dayItems: (d: Date) => CalendarItem[]; selectedDate: string; onSelectDay: (day: Date) => void; onOpenDayDetail: (day: Date) => void }) {
   const weekStart = new Date(cursor); weekStart.setDate(cursor.getDate() - cursor.getDay());
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; });
   const times = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
-  return <div className="week-grid"><div className="week-time" />{days.map(d => { const date = iso(d); return <button type="button" className={`week-time week-day-button ${date === selectedDate ? 'selected-week-day' : ''}`} onClick={() => onSelectDay(d)} key={date} style={{ color: date === today() ? 'hsl(var(--accent))' : undefined }} data-testid={`button-calendar-week-day-${date}`}>{new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' }).format(d)}</button>; })}{times.map(time => <div className="contents" key={time}><div className="week-time">{time}</div>{days.map(day => <button type="button" className={`week-cell ${iso(day) === selectedDate ? 'selected-week-cell' : ''}`} onClick={() => onSelectDay(day)} key={`${time}-${iso(day)}`} aria-label={`View ${formatLongDate(day)} around ${time}`} data-testid={`button-calendar-week-cell-${iso(day)}-${time}`}>{time === '08:00' && dayItems(day).slice(0, 2).map(item => <div className="week-event" key={`${item.id}-${item.isTask}`}>{item.title}</div>)}</button>)}</div>)}</div>;
+  return <div className="week-grid"><div className="week-time" />{days.map(d => { const date = iso(d); return <button type="button" className={`week-time week-day-button ${date === selectedDate ? 'selected-week-day' : ''}`} onClick={() => onSelectDay(d)} onDoubleClick={() => onOpenDayDetail(d)} key={date} style={{ color: date === today() ? 'hsl(var(--accent))' : undefined }} data-testid={`button-calendar-week-day-${date}`}>{new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' }).format(d)}</button>; })}{times.map(time => <div className="contents" key={time}><div className="week-time">{time}</div>{days.map(day => <button type="button" className={`week-cell ${iso(day) === selectedDate ? 'selected-week-cell' : ''}`} onClick={() => onSelectDay(day)} onDoubleClick={() => onOpenDayDetail(day)} key={`${time}-${iso(day)}`} aria-label={`View ${formatLongDate(day)} around ${time}`} data-testid={`button-calendar-week-cell-${iso(day)}-${time}`}>{time === '08:00' && dayItems(day).slice(0, 2).map(item => <div className="week-event" key={`${item.id}-${item.isTask}`}>{item.title}</div>)}</button>)}</div>)}</div>;
 }
 
 function TaskModal({ task, onSave, onClose }: { task?: Task; onSave: (task: Task) => void; onClose: () => void }) {
