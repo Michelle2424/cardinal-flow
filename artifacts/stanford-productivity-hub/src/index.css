@@ -200,19 +200,38 @@
 .calendar-view-toggle button.active { background: hsl(var(--secondary)); color: hsl(var(--foreground)); font-weight: 700; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); border: 1px solid hsl(var(--border)); border-radius: 15px; overflow: hidden; background: hsl(var(--card)); }
 .calendar-head { padding: 13px 12px; border-right: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font: 10px var(--app-font-mono); text-transform: uppercase; }
-.calendar-cell { min-height: 145px; border-right: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border)); padding: 10px; }
+.calendar-cell { min-height: 145px; border: 0; border-right: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border)); padding: 10px; text-align: left; color: hsl(var(--foreground)); background: hsl(var(--card)); font: inherit; cursor: pointer; transition: background .2s, box-shadow .2s; }
 .calendar-cell:nth-child(7n) { border-right: 0; }
 .calendar-cell.muted-day { background: hsl(var(--background) / .5); }
 .calendar-cell.today { background: hsl(var(--accent) / .07); }
+.calendar-cell:hover, .calendar-cell.selected-day { background: hsl(var(--accent) / .1); }
+.calendar-cell.selected-day { box-shadow: inset 0 0 0 2px hsl(var(--accent)); }
 .day-number { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; font: 11px var(--app-font-mono); margin-bottom: 8px; }
 .today .day-number { background: hsl(var(--accent)); color: white; }
 .calendar-event { display: block; border-radius: 5px; padding: 5px 6px; font-size: 10px; line-height: 1.25; margin-top: 5px; background: hsl(var(--secondary)); border-left: 3px solid hsl(var(--primary)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-event.task-event { background: hsl(var(--accent) / .14); border-left-color: hsl(var(--accent)); }
+.calendar-more { color: hsl(var(--muted-foreground)); font: 10px var(--app-font-mono); margin-top: 7px; }
+.selected-day-panel { border-top: 1px solid hsl(var(--border)); margin: 24px -25px -25px; padding: 21px 25px 25px; }
+.selected-day-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.selected-day-header h3 { margin: 4px 0 0; font: 500 22px var(--app-font-serif); color: hsl(var(--primary)); }
+.selected-day-timeline { display: grid; gap: 0; margin-top: 19px; }
+.selected-day-item { display: grid; grid-template-columns: 112px 10px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 53px; border-top: 1px solid hsl(var(--border)); }
+.selected-day-item:last-child { border-bottom: 1px solid hsl(var(--border)); }
+.selected-day-time { color: hsl(var(--muted-foreground)); font: 10px var(--app-font-mono); }
+.selected-day-item strong { display: block; font-size: 12px; }
+.selected-day-item div span { display: block; margin-top: 4px; color: hsl(var(--muted-foreground)); font: 10px var(--app-font-mono); }
+.selected-day-empty { border-top: 1px solid hsl(var(--border)); margin-top: 17px; padding-top: 19px; }
+.selected-day-empty p { margin: 0; font-weight: 700; font-size: 12px; }
+.selected-day-empty span { display: block; margin-top: 5px; color: hsl(var(--muted-foreground)); font-size: 11px; }
 .week-grid { display: grid; grid-template-columns: 55px repeat(7, 1fr); min-width: 780px; }
 .contents { display: contents; }
 .week-grid-wrap { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: 15px; background: hsl(var(--card)); }
 .week-cell { min-height: 95px; border-right: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border)); padding: 8px; }
 .week-time { color: hsl(var(--muted-foreground)); font: 9px var(--app-font-mono); padding: 8px; border-bottom: 1px solid hsl(var(--border)); }
+.week-day-button { border-top: 0; border-left: 0; border-right: 1px solid hsl(var(--border)); background: transparent; text-align: left; cursor: pointer; }
+.week-day-button:hover, .week-day-button.selected-week-day { background: hsl(var(--accent) / .1); }
+.week-cell { background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.week-cell:hover, .week-cell.selected-week-cell { background: hsl(var(--accent) / .08); }
 .week-event { border-radius: 6px; padding: 6px; font-size: 10px; background: hsl(var(--secondary)); border-left: 3px solid hsl(var(--primary)); }
 .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
 .filter-chip { border: 1px solid hsl(var(--border)); background: transparent; color: hsl(var(--muted-foreground)); padding: 7px 11px; border-radius: 20px; font-size: 11px; cursor: pointer; transition: all .2s; }
