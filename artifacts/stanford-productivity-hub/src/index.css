@@ -309,6 +309,30 @@
 .entry-tab-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; }
 .event-dot { background: hsl(var(--primary)); }
 .task-dot { background: hsl(var(--accent)); }
+.voice-modal { width: min(590px, 100%); }
+.voice-kind-tabs { margin: -3px 0 18px; }
+.voice-prompt { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid hsl(var(--accent) / .3); border-radius: 12px; background: hsl(var(--accent) / .08); color: hsl(var(--primary)); }
+.voice-prompt svg { flex: 0 0 auto; color: hsl(var(--accent)); margin-top: 1px; }
+.voice-prompt strong, .voice-prompt span { display: block; }
+.voice-prompt strong { font-size: 13px; }
+.voice-prompt span { color: hsl(var(--muted-foreground)); font-size: 11px; line-height: 1.5; margin-top: 3px; }
+.voice-reminders { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; list-style: none; padding: 0; margin: 16px 0; }
+.voice-reminders li { border-left: 2px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font: 10px/1.45 var(--app-font-mono); padding: 2px 0 2px 8px; }
+.voice-record-button { width: 100%; border: 0; border-radius: 11px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 12px; font-weight: 800; cursor: pointer; transition: background .2s, transform .2s; }
+.voice-record-button:hover { transform: translateY(-1px); }
+.voice-record-button.listening { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); }
+.voice-record-button.listening span { animation: pulse 1.15s ease-in-out infinite; }
+.voice-transcript-field { margin-top: 16px; }
+.voice-transcript-field textarea { min-height: 74px; }
+.voice-message { color: hsl(var(--accent)); font-size: 11px; line-height: 1.45; margin: 10px 0 0; }
+.voice-setting { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid hsl(var(--border)); margin-top: 18px; padding-top: 15px; }
+.voice-setting strong, .voice-setting span { display: block; }
+.voice-setting strong { font-size: 11px; }
+.voice-setting span { color: hsl(var(--muted-foreground)); font-size: 10px; margin-top: 3px; }
+.voice-setting input { width: 17px; height: 17px; accent-color: hsl(var(--accent)); flex: 0 0 auto; }
+.voice-transcript { border-left: 3px solid hsl(var(--accent)); padding: 2px 0 2px 13px; margin-bottom: 20px; }
+.voice-transcript span { color: hsl(var(--muted-foreground)); font: 9px var(--app-font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.voice-transcript p { margin: 5px 0 0; color: hsl(var(--foreground)); font: 500 17px/1.25 var(--app-font-serif); }
 .day-detail-modal { width: min(720px, 100%); max-height: min(760px, calc(100vh - 40px)); overflow: auto; }
 .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
 .modal-header h2 { font: 500 25px var(--app-font-serif); margin: 0; letter-spacing: -.03em; }
@@ -369,6 +393,7 @@
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 60; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); padding: 12px 16px; border-radius: 10px; box-shadow: 0 10px 35px hsl(var(--primary) / .25); font-size: 12px; animation: rise .25s ease; }
 @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 50% { transform: scale(1.18); } }
 
 @media (max-width: 900px) {
   .sidebar { width: 215px; flex-basis: 215px; }
@@ -396,6 +421,8 @@
   .calendar-view-toggle { margin-left: 0; }
   .form-grid { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
+  .voice-reminders { grid-template-columns: 1fr; gap: 6px; }
+  .voice-reminders li { border-left: 0; border-bottom: 1px solid hsl(var(--border)); padding: 5px 0; }
   .row-actions { opacity: 1; }
   .inbox-row { padding: 15px 13px; grid-template-columns: 22px minmax(0, 1fr) 27px; }
   .roadmap-item { grid-template-columns: 76px 26px 1fr; gap: 8px; }

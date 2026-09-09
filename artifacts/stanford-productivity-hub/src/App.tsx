@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Check, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell, Flag, Home, LayoutList, Leaf, ListChecks, Moon, MoreHorizontal, Pencil, Plus, Rocket, Sparkles, Sun, Trash2, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell, Flag, Home, LayoutList, Leaf, ListChecks, Mic, Moon, MoreHorizontal, Pencil, Plus, Rocket, Sparkles, Square, Sun, Trash2, X } from 'lucide-react';
 import { Link, Route, Switch, useLocation } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -18,12 +18,25 @@ const formatLongDate = (date = new Date()) => new Intl.DateTimeFormat('en-US', {
 const formatShortDate = (value: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${value}T12:00:00`));
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-type Task = { id: string; title: string; description?: string; dueDate: string; category: string; priority: 'low' | 'medium' | 'high'; completed: boolean; estimatedMinutes: number };
-type EventItem = { id: string; title: string; description?: string; date: string; startTime: string; endTime: string; category: string };
+type Task = { id: string; title: string; description?: string; dueDate: string; category: string; priority: 'low' | 'medium' | 'high'; completed: boolean; estimatedMinutes: number; recurrence?: string };
+type EventItem = { id: string; title: string; description?: string; date: string; startTime: string; endTime: string; category: string; recurrence?: string };
 type CalendarItem = { id: string; title: string; description?: string; category: string; isTask: boolean; startTime: string; endTime: string };
 type Habit = { id: string; name: string; color: string; targetPerWeek: number; completions: Record<string, boolean> };
-type Settings = { focus: string; name: string };
+type Settings = { focus: string; name: string; voiceConfirmation?: boolean };
 type Category = { id: string; name: string; color: string };
+type VoiceDraft = { kind: 'event' | 'task'; title: string; date: string; startTime: string; endTime: string; category: string; recurrence: string };
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 const categoryPalettes = {
   pastel: ['#E9B8B5', '#F2C59C', '#F2D68A', '#B9D5B2', '#A9D6D6', '#B7C7E5', '#D0B9E2', '#E4B8D0'],
@@ -265,12 +278,72 @@ function DayDetailModal({ date, items, onAddEvent, onAddTask, onEditEvent, onEdi
   </div>;
 }
 
-function CalendarPage({ tasks, events, setTasks, setEvents, categories, setCategories, notify }: { tasks: Task[]; events: EventItem[]; setTasks: (v: Task[]) => void; setEvents: (v: EventItem[]) => void; categories: Category[]; setCategories: (v: Category[]) => void; notify: (v: string) => void }) {
+function parseVoiceDraft(transcript: string, kind: VoiceDraft['kind'], initialDate: string, categories: Category[]): VoiceDraft {
+  const lower = transcript.toLowerCase();
+  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const spokenDate = lower.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/i);
+  const date = spokenDate ? iso(new Date(Number(spokenDate[3] || new Date().getFullYear()), monthNames.indexOf(spokenDate[1].toLowerCase()), Number(spokenDate[2]), 12)) : lower.includes('tomorrow') ? plusDays(1) : lower.includes('today') ? today() : initialDate;
+  const times = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|-|until)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+  const to24Hour = (hour: number, meridiem?: string) => {
+    if (!meridiem) return hour;
+    const normalized = meridiem.toLowerCase();
+    return normalized === 'pm' && hour < 12 ? hour + 12 : normalized === 'am' && hour === 12 ? 0 : hour;
+  };
+  const formatTime = (hour: number, minute = '00', meridiem?: string) => `${String(to24Hour(hour, meridiem)).padStart(2, '0')}:${minute}`;
+  const category = categories.find(item => lower.includes(item.name.toLowerCase()))?.name || categories[0]?.name || '';
+  const recurrence = lower.match(/\b(daily|weekly|biweekly|bi-weekly|monthly)\b/i)?.[1].replace('-', '') || '';
+  const title = transcript.replace(/^\s*(event|task)\s*[:,-]?\s*/i, '').split(/\b(?:today|tomorrow|on|from|recurr(?:ing)?|daily|weekly|biweekly|bi-weekly|monthly)\b/i)[0].replace(/\s+(?:from\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:to|-|until)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*$/i, '').trim() || transcript.trim();
+  return { kind, title, date, startTime: times ? formatTime(Number(times[1]), times[2], times[3]) : '09:00', endTime: times ? formatTime(Number(times[4]), times[5], times[6] || times[3]) : '10:00', category, recurrence };
+}
+
+function VoiceInputModal({ initialDate, categories, confirmationEnabled, onConfirmationChange, onSaveEvent, onSaveTask, onClose }: { initialDate: string; categories: Category[]; confirmationEnabled: boolean; onConfirmationChange: (value: boolean) => void; onSaveEvent: (event: EventItem) => void; onSaveTask: (task: Task) => void; onClose: () => void }) {
+  const [kind, setKind] = useState<VoiceDraft['kind']>('event');
+  const [step, setStep] = useState<'capture' | 'review'>('capture');
+  const [transcript, setTranscript] = useState('');
+  const [draft, setDraft] = useState<VoiceDraft | null>(null);
+  const [listening, setListening] = useState(false);
+  const [message, setMessage] = useState('');
+  const recognitionRef = useState<{ current: SpeechRecognitionLike | null }>({ current: null })[0];
+  const beginReview = (value: string) => {
+    const nextDraft = parseVoiceDraft(value, kind, initialDate, categories);
+    setTranscript(value);
+    setDraft(nextDraft);
+    setStep('review');
+  };
+  const saveDraft = (value: VoiceDraft) => {
+    if (!value.title.trim()) return;
+    if (value.kind === 'event') onSaveEvent({ id: uid(), title: value.title.trim(), date: value.date, startTime: value.startTime, endTime: value.endTime, category: value.category, recurrence: value.recurrence || undefined });
+    else onSaveTask({ id: uid(), title: value.title.trim(), dueDate: value.date, category: value.category, priority: 'medium', completed: false, estimatedMinutes: 30, recurrence: value.recurrence || undefined });
+    onClose();
+  };
+  const startListening = () => {
+    const Recognition = (window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition || (window as Window & { webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition;
+    if (!Recognition) { setMessage('Voice capture is unavailable here. Type what you would say below.'); return; }
+    const recognition = new Recognition();
+    recognition.continuous = true; recognition.interimResults = false; recognition.lang = 'en-US';
+    recognition.onresult = event => { const value = Array.from(event.results).map(result => result[0].transcript).join(' ').trim(); setTranscript(value); };
+    recognition.onerror = () => { setListening(false); setMessage('I could not hear that. Try again, or type the entry below.'); };
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition; setMessage(''); setListening(true); recognition.start();
+  };
+  useEffect(() => () => recognitionRef.current?.stop(), []);
+  const field = (label: string, value: string, onChange: (value: string) => void, type = 'text') => <div className="field"><label>{label}</label><input type={type} value={value} onChange={event => onChange(event.target.value)} /></div>;
+  const reviewVoice = () => { const value = transcript.trim(); if (value) beginReview(value); };
+  const recurrenceOption = draft?.recurrence.startsWith('custom:') ? 'custom' : draft?.recurrence || '';
+  const customRecurrenceDate = draft?.recurrence.startsWith('custom:') ? draft.recurrence.slice(7) : draft?.date || initialDate;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) onClose(); }}><div className="modal voice-modal" role="dialog" aria-modal="true" aria-labelledby="voice-input-title">
+    <div className="modal-header"><div><div className="eyebrow">Voice entry</div><h2 id="voice-input-title">{step === 'capture' ? 'Say what you need to remember' : 'Check the details'}</h2><p>{step === 'capture' ? 'Speak naturally. I will shape it into a calendar entry.' : 'Make any small correction before it joins your calendar.'}</p></div><button className="icon-button" onClick={onClose} data-testid="button-close-voice"><X size={16} /></button></div>
+    {step === 'capture' ? <><div className="entry-tabs voice-kind-tabs"><button type="button" className={kind === 'event' ? 'active' : ''} onClick={() => setKind('event')} data-testid="voice-kind-event"><span className="entry-tab-dot event-dot" />Event</button><button type="button" className={kind === 'task' ? 'active' : ''} onClick={() => setKind('task')} data-testid="voice-kind-task"><span className="entry-tab-dot task-dot" />Task</button></div><div className="voice-prompt"><Mic size={20} /><div><strong>Tell me these five things</strong><span>Name, date, time range, category if useful, and whether it repeats.</span></div></div><ul className="voice-reminders"><li>Name the {kind}</li><li>Say the date and time range{kind === 'task' ? ' if it has one' : ''}</li><li>Add a category or recurrence if helpful</li></ul><button className={`voice-record-button ${listening ? 'listening' : ''}`} onClick={listening ? () => recognitionRef.current?.stop() : startListening} data-testid="button-start-voice"><span>{listening ? <Square size={15} /> : <Mic size={18} />}</span>{listening ? 'Listening... tap to stop' : 'Start speaking'}</button><div className="field voice-transcript-field"><label htmlFor="voice-transcript">Or type your words</label><textarea id="voice-transcript" rows={3} value={transcript} onChange={event => setTranscript(event.target.value)} placeholder="Event study group tomorrow from 3 to 4 pm, Academics, recurring weekly" data-testid="input-voice-transcript" /></div>{message && <p className="voice-message">{message}</p>}<div className="voice-setting"><div><strong>Review before adding</strong><span>Keep the confirmation step on for more control.</span></div><input type="checkbox" checked={confirmationEnabled} onChange={event => onConfirmationChange(event.target.checked)} aria-label="Review before adding" data-testid="toggle-voice-confirmation" /></div><div className="modal-footer"><button className="button-secondary" onClick={onClose}>Cancel</button><button className="button-primary" disabled={!transcript.trim()} onClick={() => { if (confirmationEnabled) reviewVoice(); else saveDraft(parseVoiceDraft(transcript.trim(), kind, initialDate, categories)); }} data-testid="button-parse-voice">{confirmationEnabled ? 'Review entry' : 'Add entry'}</button></div></> : <><div className="voice-transcript"><span>Heard</span><p>“{transcript}”</p></div><div className="form-grid"><div className="field full"><label>Title</label><input value={draft?.title || ''} onChange={event => setDraft(draft ? { ...draft, title: event.target.value } : draft)} data-testid="input-voice-title" /></div>{field(kind === 'event' ? 'Date' : 'Due date', draft?.date || '', value => setDraft(draft ? { ...draft, date: value } : draft), 'date')}{field('Category (optional)', draft?.category || '', value => setDraft(draft ? { ...draft, category: value } : draft))}{kind === 'event' && <>{field('Starts', draft?.startTime || '', value => setDraft(draft ? { ...draft, startTime: value } : draft), 'time')}{field('Ends', draft?.endTime || '', value => setDraft(draft ? { ...draft, endTime: value } : draft), 'time')}</>}{<div className="field"><label htmlFor="voice-recurrence">Repeats (optional)</label><select id="voice-recurrence" value={recurrenceOption} onChange={event => setDraft(draft ? { ...draft, recurrence: event.target.value } : draft)} data-testid="select-voice-recurrence"><option value="">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly">Monthly</option><option value="custom">Custom date</option></select></div>}{recurrenceOption === 'custom' && field('Custom date', customRecurrenceDate, value => setDraft(draft ? { ...draft, recurrence: `custom:${value}` } : draft), 'date')}</div><div className="modal-footer"><button className="button-secondary" onClick={() => setStep('capture')}>Back</button><button className="button-primary" disabled={!draft?.title.trim()} onClick={() => draft && saveDraft(draft)} data-testid="button-confirm-voice">Confirm and add</button></div></>}
+  </div></div>;
+}
+
+function CalendarPage({ tasks, events, setTasks, setEvents, categories, setCategories, notify, settings, setSettings }: { tasks: Task[]; events: EventItem[]; setTasks: (v: Task[]) => void; setEvents: (v: EventItem[]) => void; categories: Category[]; setCategories: (v: Category[]) => void; notify: (v: string) => void; settings: Settings; setSettings: (v: Settings) => void }) {
   const [cursor, setCursor] = useState(new Date());
   const [view, setView] = useState<'month' | 'week'>('month');
   const [entry, setEntry] = useState<{ type: 'event'; item?: EventItem } | { type: 'task'; item?: Task } | null>(null);
   const [selectedDate, setSelectedDate] = useState(today());
   const [detailDate, setDetailDate] = useState<string | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const year = cursor.getFullYear(); const month = cursor.getMonth();
   const first = new Date(year, month, 1); const start = new Date(year, month, 1 - first.getDay());
   const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
@@ -315,13 +388,14 @@ function CalendarPage({ tasks, events, setTasks, setEvents, categories, setCateg
   };
   const categoryColor = (name: string) => categories.find(category => category.name === name)?.color || '#6E879F';
   return <div className="content">
-    <div className="page-heading"><div className="heading-copy"><div className="eyebrow">A wider view</div><h1 className="display-title">Calendar</h1><p>See the shape of your time before it fills up. Tasks and events share the same quiet table.</p></div><div className="calendar-actions"><button className="button-accent" onClick={() => setEntry({ type: 'task' })} data-testid="button-add-task-calendar"><Plus size={15} /> Add task</button><button className="button-primary" onClick={() => setEntry({ type: 'event' })} data-testid="button-add-event"><Plus size={15} /> Add event</button></div></div>
+    <div className="page-heading"><div className="heading-copy"><div className="eyebrow">A wider view</div><h1 className="display-title">Calendar</h1><p>See the shape of your time before it fills up. Tasks and events share the same quiet table.</p></div><div className="calendar-actions"><button className="button-secondary" onClick={() => setVoiceOpen(true)} data-testid="button-voice-input"><Mic size={15} /> Speak an entry</button><button className="button-accent" onClick={() => setEntry({ type: 'task' })} data-testid="button-add-task-calendar"><Plus size={15} /> Add task</button><button className="button-primary" onClick={() => setEntry({ type: 'event' })} data-testid="button-add-event"><Plus size={15} /> Add event</button></div></div>
     <div className="card card-pad">
       <div className="calendar-toolbar"><button className="icon-button" onClick={() => move(-1)} data-testid="button-calendar-prev"><ChevronLeft size={15} /></button><button className="icon-button" onClick={() => { setCursor(new Date()); }} data-testid="button-calendar-today"><Sun size={14} /></button><button className="icon-button" onClick={() => move(1)} data-testid="button-calendar-next"><ChevronRight size={15} /></button><h2>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(cursor)}</h2><div className="calendar-view-toggle"><button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')} data-testid="button-calendar-month">Month</button><button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')} data-testid="button-calendar-week">Week</button></div></div>
       {view === 'month' ? <div className="calendar-wrap"><div className="calendar-grid" style={{ marginTop: 20 }}><>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div className="calendar-head" key={day}>{day}</div>)}{cells.map(day => { const date = iso(day); const items = dayItems(day); return <button type="button" className={`calendar-cell ${day.getMonth() !== month ? 'muted-day' : ''} ${date === today() ? 'today' : ''} ${date === selectedDate ? 'selected-day' : ''}`} onClick={() => selectDay(day)} onDoubleClick={() => openDayDetail(day)} aria-label={`Select ${formatLongDate(day)}. Double-click to open day view.`} key={date} data-testid={`button-calendar-day-${date}`}><div className="day-number">{day.getDate()}</div>{items.slice(0, 3).map(item => <div className={`calendar-event ${item.isTask ? 'task-event' : ''}`} style={{ borderLeftColor: categoryColor(item.category) }} title={item.title} key={`${item.id}-${item.isTask}`}>{item.title}</div>)}{items.length > 3 && <div className="calendar-more">+{items.length - 3} more</div>}</button>; })}</></div></div> : <div className="week-grid-wrap" style={{ marginTop: 20 }}><WeekView cursor={cursor} dayItems={dayItems} selectedDate={selectedDate} onSelectDay={selectDay} onOpenDayDetail={openDayDetail} categoryColor={categoryColor} /></div>}
       <div className="calendar-interaction-hint">Single-click a day to select it. Double-click to open its hourly timeline.</div>
     </div>
     {entry && <CalendarItemModal entry={entry} initialDate={selectedDate} categories={categories} onChangeCategories={setCategories} onSaveEvent={saveEvent} onSaveTask={saveTask} onClose={() => setEntry(null)} />}
+    {voiceOpen && <VoiceInputModal initialDate={selectedDate} categories={categories} confirmationEnabled={settings.voiceConfirmation !== false} onConfirmationChange={value => setSettings({ ...settings, voiceConfirmation: value })} onSaveEvent={saveEvent} onSaveTask={saveTask} onClose={() => setVoiceOpen(false)} />}
     {detailDate && <DayDetailModal date={detailDate} items={dayItems(new Date(`${detailDate}T12:00:00`))} onAddEvent={() => { setDetailDate(null); setEntry({ type: 'event' }); }} onAddTask={() => { setDetailDate(null); setEntry({ type: 'task' }); }} onEditEvent={editEvent} onEditTask={editTask} onClose={() => setDetailDate(null)} />}
   </div>;
 }
@@ -411,7 +485,7 @@ function RoadmapPage() {
 function Router({ tasks, events, habits, categories, settings, setTasks, setEvents, setHabits, setCategories, setSettings, notify, openTask }: {
   tasks: Task[]; events: EventItem[]; habits: Habit[]; categories: Category[]; settings: Settings; setTasks: (v: Task[]) => void; setEvents: (v: EventItem[]) => void; setHabits: (v: Habit[]) => void; setCategories: (v: Category[]) => void; setSettings: (v: Settings) => void; notify: (v: string) => void; openTask: () => void;
 }) {
-  return <Switch><Route path="/"><TodayPage tasks={tasks} events={events} habits={habits} settings={settings} setTasks={setTasks} setHabits={setHabits} setSettings={setSettings} notify={notify} openTask={openTask} /></Route><Route path="/calendar"><CalendarPage tasks={tasks} events={events} setTasks={setTasks} setEvents={setEvents} categories={categories} setCategories={setCategories} notify={notify} /></Route><Route path="/tasks"><TasksPage tasks={tasks} setTasks={setTasks} categories={categories} setCategories={setCategories} notify={notify} /></Route><Route path="/habits"><HabitsPage habits={habits} setHabits={setHabits} notify={notify} /></Route><Route path="/roadmap"><RoadmapPage /></Route><Route component={NotFound} /></Switch>;
+  return <Switch><Route path="/"><TodayPage tasks={tasks} events={events} habits={habits} settings={settings} setTasks={setTasks} setHabits={setHabits} setSettings={setSettings} notify={notify} openTask={openTask} /></Route><Route path="/calendar"><CalendarPage tasks={tasks} events={events} setTasks={setTasks} setEvents={setEvents} categories={categories} setCategories={setCategories} notify={notify} settings={settings} setSettings={setSettings} /></Route><Route path="/tasks"><TasksPage tasks={tasks} setTasks={setTasks} categories={categories} setCategories={setCategories} notify={notify} /></Route><Route path="/habits"><HabitsPage habits={habits} setHabits={setHabits} notify={notify} /></Route><Route path="/roadmap"><RoadmapPage /></Route><Route component={NotFound} /></Switch>;
 }
 
 function App() {
